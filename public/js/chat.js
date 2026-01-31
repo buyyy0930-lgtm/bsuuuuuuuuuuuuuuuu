@@ -116,6 +116,12 @@ function sendMessage() {
 function displayFacultyMessage(msg) {
     const messagesContainer = document.getElementById('chat-messages');
     
+    // Əngəlləmə yoxlaması - client-side
+    const currentUserBlockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
+    if (currentUserBlockedList.includes(msg.userId)) {
+        return; // Əngəllənmiş istifadəçinin mesajını göstərmə
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     messageDiv.dataset.userId = msg.userId;
@@ -169,8 +175,13 @@ function displayFacultyMessage(msg) {
     
     messagesContainer.appendChild(messageDiv);
     
-    // Auto scroll to bottom
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // Smooth auto scroll to bottom
+    requestAnimationFrame(() => {
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+        });
+    });
 }
 
 // Toggle message menu
@@ -235,6 +246,12 @@ function sendPrivateMessage() {
 function displayPrivateMessage(msg) {
     const messagesContainer = document.getElementById('private-messages');
     
+    // Əngəlləmə yoxlaması
+    const currentUserBlockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
+    if (currentUserBlockedList.includes(msg.senderId)) {
+        return; // Əngəllənmiş istifadəçinin mesajını göstərmə
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     messageDiv.dataset.senderId = msg.senderId;
@@ -283,18 +300,31 @@ function displayPrivateMessage(msg) {
     
     messagesContainer.appendChild(messageDiv);
     
-    // Auto scroll to bottom
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    // Smooth auto scroll to bottom
+    requestAnimationFrame(() => {
+        messagesContainer.scrollTo({
+            top: messagesContainer.scrollHeight,
+            behavior: 'smooth'
+        });
+    });
 }
 
 // Block user
 function blockUser(targetUserId) {
     if (confirm('Bu istifadəçini əngəlləmək istədiyinizə əminsiniz?')) {
         socket.emit('block-user', { userId, targetUserId });
+        
+        // localStorage-da saxla
+        const blockedList = JSON.parse(localStorage.getItem('blockedUsers') || '[]');
+        if (!blockedList.includes(targetUserId)) {
+            blockedList.push(targetUserId);
+            localStorage.setItem('blockedUsers', JSON.stringify(blockedList));
+        }
+        
         alert('İstifadəçi əngəlləndi');
         
         // Hide messages from blocked user
-        document.querySelectorAll(`[data-user-id="${targetUserId}"]`).forEach(msg => {
+        document.querySelectorAll(`[data-user-id="${targetUserId}"], [data-sender-id="${targetUserId}"]`).forEach(msg => {
             msg.style.display = 'none';
         });
         

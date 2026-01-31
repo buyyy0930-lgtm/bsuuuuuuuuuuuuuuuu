@@ -523,15 +523,8 @@ io.on('connection', (socket) => {
     
     database.messages[faculty].push(messageData);
     
-    // Əngəllənmiş istifadəçilərə görə fərqli göndər
-    database.users.forEach(u => {
-      if (u.faculty === faculty && u.status === 'active') {
-        const blockedList = database.blockedUsers[u.id] || [];
-        if (!blockedList.includes(userId)) {
-          io.to(faculty).emit('new-faculty-message', messageData);
-        }
-      }
-    });
+    // Fakültəyə mesajı göndər (real-time)
+    io.to(faculty).emit('new-faculty-message', messageData);
   });
   
   socket.on('join-private-chat', ({ userId, otherUserId }) => {
