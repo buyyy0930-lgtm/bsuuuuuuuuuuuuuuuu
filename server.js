@@ -6,19 +6,56 @@ const session = require('express-session');
 const fileUpload = require('express-fileupload');
 const bcrypt = require('bcryptjs');
 const sanitizeHtml = require('sanitize-html');
+const compression = require('compression');
 const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIO(server);
+const io = socketIO(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
 
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static('public'));
-app.use('/uploads', express.static('uploads'));
+// Middleware - Compression for better performance
+app.use(compression({
+  level: 6,
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+}));
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Static files with caching
+app.use(express.static('public', {
+  maxAge: '1d',
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, path) => {
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (path.endsWith('.css') || path.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+    }
+  }
+}));
+
+app.use('/uploads', express.static('uploads', {
+  maxAge: '7d',
+  etag: true
+}));
 app.use(fileUpload({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   createParentPath: true
@@ -48,8 +85,12 @@ const database = {
   dailyTopic: 'Bugün fakültənizlə bağlı fikirlərini paylaş!',
   bannedWords: ['spam', 'reklam'],
   messageExpiry: {
-    group: 24, // saatlarla
-    private: 48
+    groupMinutes: 1440, // 24 saat = 1440 dəqiqə
+    groupUnit: 'hours',
+    groupHours: 24,
+    privateMinutes: 2880, // 48 saat = 2880 dəqiqə
+    privateUnit: 'hours',
+    privateHours: 48
   }
 };
 
@@ -131,26 +172,26 @@ function getBakuTime() {
   });
 }
 
-// Mesaj avtomatik silinmə
+// Mesaj avtomatik silinmə (hər dəqiqə yoxla)
 setInterval(() => {
   const now = Date.now();
   
-  // Qrup mesajlarını sil
-  const groupExpiry = database.messageExpiry.group * 60 * 60 * 1000;
+  // Qrup mesajlarını sil (dəqiqə ilə)
+  const groupExpiry = database.messageExpiry.groupMinutes * 60 * 1000;
   Object.keys(database.messages).forEach(faculty => {
     database.messages[faculty] = database.messages[faculty].filter(msg => {
       return (now - msg.timestamp) < groupExpiry;
     });
   });
   
-  // Şəxsi mesajları sil
-  const privateExpiry = database.messageExpiry.private * 60 * 60 * 1000;
+  // Şəxsi mesajları sil (dəqiqə ilə)
+  const privateExpiry = database.messageExpiry.privateMinutes * 60 * 1000;
   Object.keys(database.privateMessages).forEach(key => {
     database.privateMessages[key] = database.privateMessages[key].filter(msg => {
       return (now - msg.timestamp) < privateExpiry;
     });
   });
-}, 60000); // Hər dəqiqə yoxla
+}, 60000); // Hər dəqiqə
 
 // API Routes
 app.post('/api/register', async (req, res) => {
@@ -432,9 +473,16 @@ app.get('/api/admin/reported-users', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/message-expiry/update', requireAdmin, (req, res) => {
-  const { groupHours, privateHours } = req.body;
-  database.messageExpiry.group = parseInt(groupHours) || 24;
-  database.messageExpiry.private = parseInt(privateHours) || 48;
+  const { groupMinutes, groupUnit, privateMinutes, privateUnit } = req.body;
+  
+  database.messageExpiry.groupMinutes = parseInt(groupMinutes) || 1440;
+  database.messageExpiry.groupUnit = groupUnit || 'hours';
+  database.messageExpiry.groupHours = groupUnit === 'minutes' ? Math.floor(groupMinutes / 60) : Math.floor(groupMinutes / 60);
+  
+  database.messageExpiry.privateMinutes = parseInt(privateMinutes) || 2880;
+  database.messageExpiry.privateUnit = privateUnit || 'hours';
+  database.messageExpiry.privateHours = privateUnit === 'minutes' ? Math.floor(privateMinutes / 60) : Math.floor(privateMinutes / 60);
+  
   res.json({ success: true });
 });
 

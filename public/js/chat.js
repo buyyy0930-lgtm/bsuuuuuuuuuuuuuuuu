@@ -4,14 +4,45 @@ if (!userId) {
     window.location.href = '/';
 }
 
-// Socket.IO connection
-const socket = io();
+// Socket.IO connection with optimization
+const socket = io({
+    transports: ['websocket', 'polling'],
+    upgrade: true,
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5
+});
 
 // Global variables
 let currentUser = null;
 let currentFaculty = null;
 let currentChatUser = null;
 let faculties = [];
+
+// Performance optimization: Debounce function
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Performance optimization: Throttle function
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
 
 // Load user profile
 async function loadUserProfile() {
@@ -112,7 +143,7 @@ function sendMessage() {
     input.style.height = 'auto';
 }
 
-// Display faculty message
+// Display faculty message (optimized)
 function displayFacultyMessage(msg) {
     const messagesContainer = document.getElementById('chat-messages');
     
@@ -122,6 +153,9 @@ function displayFacultyMessage(msg) {
         return; // Əngəllənmiş istifadəçinin mesajını göstərmə
     }
     
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     messageDiv.dataset.userId = msg.userId;
@@ -129,7 +163,11 @@ function displayFacultyMessage(msg) {
     const avatarDiv = document.createElement('div');
     avatarDiv.className = 'message-avatar';
     if (msg.avatar) {
-        avatarDiv.innerHTML = `<img src="${msg.avatar}" alt="Avatar">`;
+        const img = document.createElement('img');
+        img.src = msg.avatar;
+        img.alt = 'Avatar';
+        img.loading = 'lazy'; // Lazy load images
+        avatarDiv.appendChild(img);
     } else {
         avatarDiv.textContent = msg.fullname.charAt(0).toUpperCase();
     }
@@ -173,16 +211,22 @@ function displayFacultyMessage(msg) {
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
     
-    messagesContainer.appendChild(messageDiv);
+    fragment.appendChild(messageDiv);
+    messagesContainer.appendChild(fragment);
     
-    // Smooth auto scroll to bottom
+    // Throttled smooth auto scroll
+    throttledScroll(messagesContainer);
+}
+
+// Throttled scroll function
+const throttledScroll = throttle((container) => {
     requestAnimationFrame(() => {
-        messagesContainer.scrollTo({
-            top: messagesContainer.scrollHeight,
+        container.scrollTo({
+            top: container.scrollHeight,
             behavior: 'smooth'
         });
     });
-}
+}, 100);
 
 // Toggle message menu
 function toggleMessageMenu(event, userId, fullname) {
@@ -256,7 +300,7 @@ function sendPrivateMessage() {
     input.style.height = 'auto';
 }
 
-// Display private message
+// Display private message (optimized)
 function displayPrivateMessage(msg) {
     const messagesContainer = document.getElementById('private-messages');
     
@@ -265,6 +309,9 @@ function displayPrivateMessage(msg) {
     if (currentUserBlockedList.includes(msg.senderId)) {
         return; // Əngəllənmiş istifadəçinin mesajını göstərmə
     }
+    
+    // Use DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
     
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
@@ -275,7 +322,11 @@ function displayPrivateMessage(msg) {
     const avatarDiv = document.createElement('div');
     avatarDiv.className = 'message-avatar';
     if (msg.senderAvatar) {
-        avatarDiv.innerHTML = `<img src="${msg.senderAvatar}" alt="Avatar">`;
+        const img = document.createElement('img');
+        img.src = msg.senderAvatar;
+        img.alt = 'Avatar';
+        img.loading = 'lazy'; // Lazy load images
+        avatarDiv.appendChild(img);
     } else {
         avatarDiv.textContent = msg.senderName.charAt(0).toUpperCase();
     }
@@ -312,15 +363,11 @@ function displayPrivateMessage(msg) {
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
     
-    messagesContainer.appendChild(messageDiv);
+    fragment.appendChild(messageDiv);
+    messagesContainer.appendChild(fragment);
     
-    // Smooth auto scroll to bottom
-    requestAnimationFrame(() => {
-        messagesContainer.scrollTo({
-            top: messagesContainer.scrollHeight,
-            behavior: 'smooth'
-        });
-    });
+    // Throttled smooth auto scroll
+    throttledScroll(messagesContainer);
 }
 
 // Block user

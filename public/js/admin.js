@@ -251,22 +251,48 @@ async function showMessageExpiry() {
         const response = await fetch('/api/admin/message-expiry');
         const data = await response.json();
         
-        document.getElementById('group-expiry-input').value = data.group;
-        document.getElementById('private-expiry-input').value = data.private;
+        // Qrup mesajları
+        if (data.groupUnit === 'minutes') {
+            document.getElementById('group-expiry-value').value = data.groupMinutes;
+            document.getElementById('group-expiry-unit').value = 'minutes';
+        } else {
+            document.getElementById('group-expiry-value').value = data.groupHours;
+            document.getElementById('group-expiry-unit').value = 'hours';
+        }
+        
+        // Şəxsi mesajlar
+        if (data.privateUnit === 'minutes') {
+            document.getElementById('private-expiry-value').value = data.privateMinutes;
+            document.getElementById('private-expiry-unit').value = 'minutes';
+        } else {
+            document.getElementById('private-expiry-value').value = data.privateHours;
+            document.getElementById('private-expiry-unit').value = 'hours';
+        }
     } catch (error) {
         console.error('Mesaj müddəti yüklənmədi:', error);
     }
 }
 
 async function saveMessageExpiry() {
-    const groupHours = document.getElementById('group-expiry-input').value;
-    const privateHours = document.getElementById('private-expiry-input').value;
+    const groupValue = parseInt(document.getElementById('group-expiry-value').value);
+    const groupUnit = document.getElementById('group-expiry-unit').value;
+    const privateValue = parseInt(document.getElementById('private-expiry-value').value);
+    const privateUnit = document.getElementById('private-expiry-unit').value;
+    
+    // Dəqiqəyə çevir
+    const groupMinutes = groupUnit === 'minutes' ? groupValue : groupValue * 60;
+    const privateMinutes = privateUnit === 'minutes' ? privateValue : privateValue * 60;
     
     try {
         const response = await fetch('/api/admin/message-expiry/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ groupHours, privateHours })
+            body: JSON.stringify({ 
+                groupMinutes,
+                groupUnit,
+                privateMinutes,
+                privateUnit
+            })
         });
         
         if (response.ok) {
