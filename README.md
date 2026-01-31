@@ -41,6 +41,12 @@
 
 ## 🚀 Quraşdırma və İstifadə
 
+### 🌐 Live Demo
+
+**Sandbox URL**: https://3000-iotb3g0x0iszp1m517mt3-2e77fc33.sandbox.novita.ai
+
+**GitHub Repository**: https://github.com/buyyy0930-lgtm/bsuuuuuuuuuuuuuuuu
+
 ### Lokal Development
 
 ```bash
