@@ -198,6 +198,20 @@ function toggleMessageMenu(event, userId, fullname) {
     menu.classList.toggle('active');
 }
 
+// Toggle private message menu
+function togglePrivateMessageMenu(event, userId) {
+    event.stopPropagation();
+    
+    const menu = event.target.nextElementSibling;
+    
+    // Close other menus
+    document.querySelectorAll('.message-menu').forEach(m => {
+        if (m !== menu) m.classList.remove('active');
+    });
+    
+    menu.classList.toggle('active');
+}
+
 // Close menus on outside click
 document.addEventListener('click', () => {
     document.querySelectorAll('.message-menu').forEach(m => m.classList.remove('active'));
