@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Paneli - BSU Chat</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="admin-page">
+    <header class="admin-header">
+        <div class="admin-header-content">
+            <h1>🛡️ Admin Paneli</h1>
+            <button class="logout-btn" onclick="adminLogout()">Çıxış</button>
+        </div>
+    </header>
+    
+    <div class="admin-container">
+        <!-- Admin Dashboard Cards -->
+        <div class="admin-grid" id="admin-dashboard">
+            <div class="admin-card danger" onclick="showDangerousAccounts()">
+                <div class="admin-card-icon">⚠️</div>
+                <div class="admin-card-title">Təhlükəli Hesablar</div>
+                <div class="admin-card-desc">16+ şikayəti olan istifadəçilər</div>
+            </div>
+            
+            <div class="admin-card warning" onclick="showFilterWords()">
+                <div class="admin-card-icon">🔍</div>
+                <div class="admin-card-title">Filtr Sözləri</div>
+                <div class="admin-card-desc">Qadağan edilmiş sözləri idarə et</div>
+            </div>
+            
+            <div class="admin-card primary" onclick="showRulesEditor()">
+                <div class="admin-card-icon">📜</div>
+                <div class="admin-card-title">Qaydalar</div>
+                <div class="admin-card-desc">Sayt qaydalarını redaktə et</div>
+            </div>
+            
+            <div class="admin-card success" onclick="showDailyTopicEditor()">
+                <div class="admin-card-icon">⭐</div>
+                <div class="admin-card-title">Günün Mövzusu</div>
+                <div class="admin-card-desc">Günlük mövzunu dəyişdir</div>
+            </div>
+            
+            <div class="admin-card info" onclick="showAllUsers()">
+                <div class="admin-card-icon">👥</div>
+                <div class="admin-card-title">Bütün İstifadəçilər</div>
+                <div class="admin-card-desc">İstifadəçiləri idarə et</div>
+            </div>
+            
+            <div class="admin-card purple" onclick="showMessageExpiry()">
+                <div class="admin-card-icon">⏰</div>
+                <div class="admin-card-title">Mesaj Müddəti</div>
+                <div class="admin-card-desc">Avtomatik silinmə vaxtını ayarla</div>
+            </div>
+            
+            <div class="admin-card primary" id="admin-management-card" style="display: none;" onclick="showAdminManagement()">
+                <div class="admin-card-icon">👨‍💼</div>
+                <div class="admin-card-title">Alt Adminlər</div>
+                <div class="admin-card-desc">Admin hesablarını idarə et</div>
+            </div>
+        </div>
+        
+        <!-- Dangerous Accounts Section -->
+        <div id="dangerous-accounts-section" class="hidden">
+            <div class="users-table-container">
+                <h2>⚠️ Təhlükəli Hesablar (16+ Şikayət)</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <table class="users-table" style="margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th>Ad Soyad</th>
+                            <th>Email</th>
+                            <th>Fakültə</th>
+                            <th>Şikayət Sayı</th>
+                            <th>Status</th>
+                            <th>Əməliyyat</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dangerous-users-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Filter Words Section -->
+        <div id="filter-words-section" class="hidden">
+            <div class="users-table-container">
+                <h2>🔍 Filtr Sözləri</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <div style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label>Qadağan edilmiş sözlər (vergüllə ayırın)</label>
+                        <textarea id="filter-words-input" rows="5" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveFilterWords()">Yadda saxla</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Rules Editor Section -->
+        <div id="rules-editor-section" class="hidden">
+            <div class="users-table-container">
+                <h2>📜 Qaydalar</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <div style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label>Sayt Qaydaları</label>
+                        <textarea id="rules-input" rows="10" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="saveRules()">Yadda saxla</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Daily Topic Editor Section -->
+        <div id="daily-topic-section" class="hidden">
+            <div class="users-table-container">
+                <h2>⭐ Günün Mövzusu</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <div style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label>Günün Mövzusu</label>
+                        <input type="text" id="daily-topic-input" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveDailyTopic()">Yadda saxla</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- All Users Section -->
+        <div id="all-users-section" class="hidden">
+            <div class="users-table-container">
+                <h2>👥 Bütün İstifadəçilər (<span id="total-users">0</span>)</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <table class="users-table" style="margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th>Ad Soyad</th>
+                            <th>Email</th>
+                            <th>Telefon</th>
+                            <th>Fakültə</th>
+                            <th>Dərəcə</th>
+                            <th>Kurs</th>
+                            <th>Şikayət</th>
+                            <th>Status</th>
+                            <th>Əməliyyat</th>
+                        </tr>
+                    </thead>
+                    <tbody id="all-users-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Message Expiry Section -->
+        <div id="message-expiry-section" class="hidden">
+            <div class="users-table-container">
+                <h2>⏰ Mesaj Silinmə Müddəti</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                <div style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label>Qrup mesajları silinmə vaxtı (saat)</label>
+                        <input type="number" id="group-expiry-input" min="1" max="168" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+                    </div>
+                    <div class="form-group">
+                        <label>Şəxsi mesajlar silinmə vaxtı (saat)</label>
+                        <input type="number" id="private-expiry-input" min="1" max="168" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 15px;">
+                    </div>
+                    <button class="btn btn-primary" onclick="saveMessageExpiry()">Yadda saxla</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Admin Management Section (Super Admin Only) -->
+        <div id="admin-management-section" class="hidden">
+            <div class="users-table-container">
+                <h2>👨‍💼 Alt Admin İdarəetmə</h2>
+                <button class="btn btn-secondary" onclick="showDashboard()">← Geri</button>
+                
+                <div style="margin-top: 20px; margin-bottom: 30px;">
+                    <h3>Yeni Admin Yarat</h3>
+                    <form id="create-admin-form" style="display: flex; gap: 15px; margin-top: 15px;">
+                        <input type="text" id="new-admin-username" placeholder="İstifadəçi adı" required style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        <input type="password" id="new-admin-password" placeholder="Şifrə" required style="flex: 1; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                        <button type="submit" class="btn btn-primary">Yarat</button>
+                    </form>
+                </div>
+                
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>İstifadəçi adı</th>
+                            <th>Rol</th>
+                            <th>Əməliyyat</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admins-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/js/admin.js"></script>
+</body>
+</html>
