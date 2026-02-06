@@ -8,7 +8,6 @@ const bcrypt = require('bcryptjs');
 const sanitizeHtml = require('sanitize-html');
 const compression = require('compression');
 const fs = require('fs');
-const { db, dbHelpers, dbAPI } = require('./database');
 
 const app = express();
 const server = http.createServer(app);
@@ -72,10 +71,27 @@ app.use(session({
   }
 }));
 
-// In-memory data (yalnız mesajlar üçün - digər məlumatlar SQLite-da)
-const messagesCache = {
+// In-memory verilənlər bazası (Render.com üçün - production-da real DB istifadə edin)
+const database = {
+  users: [],
+  admins: [
+    { username: 'ursamajor', password: bcrypt.hashSync('ursa618', 10), role: 'super' }
+  ],
   messages: {}, // faculty -> messages[]
-  privateMessages: {} // userId1_userId2 -> messages[]
+  privateMessages: {}, // userId1_userId2 -> messages[]
+  blockedUsers: {}, // userId -> [blockedUserId1, ...]
+  reports: {}, // userId -> reportCount
+  rules: 'BSU Chat qaydalarına xoş gəlmisiniz!',
+  dailyTopic: 'Bugün fakültənizlə bağlı fikirlərini paylaş!',
+  bannedWords: ['spam', 'reklam'],
+  messageExpiry: {
+    groupMinutes: 1440, // 24 saat = 1440 dəqiqə
+    groupUnit: 'hours',
+    groupHours: 24,
+    privateMinutes: 2880, // 48 saat = 2880 dəqiqə
+    privateUnit: 'hours',
+    privateHours: 48
+  }
 };
 
 // Fakültələr
@@ -159,20 +175,19 @@ function getBakuTime() {
 // Mesaj avtomatik silinmə (hər dəqiqə yoxla)
 setInterval(() => {
   const now = Date.now();
-  const expiry = dbAPI.getMessageExpiry();
   
   // Qrup mesajlarını sil (dəqiqə ilə)
-  const groupExpiry = expiry.groupMinutes * 60 * 1000;
-  Object.keys(messagesCache.messages).forEach(faculty => {
-    messagesCache.messages[faculty] = messagesCache.messages[faculty].filter(msg => {
+  const groupExpiry = database.messageExpiry.groupMinutes * 60 * 1000;
+  Object.keys(database.messages).forEach(faculty => {
+    database.messages[faculty] = database.messages[faculty].filter(msg => {
       return (now - msg.timestamp) < groupExpiry;
     });
   });
   
   // Şəxsi mesajları sil (dəqiqə ilə)
-  const privateExpiry = expiry.privateMinutes * 60 * 1000;
-  Object.keys(messagesCache.privateMessages).forEach(key => {
-    messagesCache.privateMessages[key] = messagesCache.privateMessages[key].filter(msg => {
+  const privateExpiry = database.messageExpiry.privateMinutes * 60 * 1000;
+  Object.keys(database.privateMessages).forEach(key => {
+    database.privateMessages[key] = database.privateMessages[key].filter(msg => {
       return (now - msg.timestamp) < privateExpiry;
     });
   });
@@ -200,13 +215,10 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'Fakültə düzgün seçilməyib' });
     }
     
-    // Təkrar yoxlama (SQLite-dan)
-    const existingByEmail = dbHelpers.getUserByEmail.get(email);
-    const existingByPhone = dbHelpers.getUserByPhone.get(phone);
-    
-    if (existingByEmail || existingByPhone) {
-      const existing = existingByEmail || existingByPhone;
-      if (existing.status === 'banned') {
+    // Təkrar yoxlama
+    const existingUser = database.users.find(u => u.email === email || u.phone === phone);
+    if (existingUser) {
+      if (existingUser.status === 'banned') {
         return res.status(403).json({ error: 'Bu hesab deaktiv edilib' });
       }
       return res.status(400).json({ error: 'Bu email və ya telefon artıq qeydiyyatdan keçib' });
@@ -229,11 +241,23 @@ app.post('/api/register', async (req, res) => {
     const userId = generateUserId();
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // SQLite-a əlavə et
-    dbHelpers.createUser.run(
-      userId, phone, email, hashedPassword, fullname, 
-      faculty, degree, parseInt(course), null, 'active', getBakuTime()
-    );
+    const newUser = {
+      id: userId,
+      phone,
+      email,
+      password: hashedPassword,
+      fullname,
+      faculty,
+      degree,
+      course: parseInt(course),
+      avatar: null,
+      status: 'active',
+      createdAt: getBakuTime()
+    };
+    
+    database.users.push(newUser);
+    database.reports[userId] = 0;
+    database.blockedUsers[userId] = [];
     
     res.json({ success: true, message: 'Qeydiyyat uğurla tamamlandı' });
   } catch (error) {
@@ -246,7 +270,7 @@ app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    const user = dbHelpers.getUserByEmail.get(email);
+    const user = database.users.find(u => u.email === email);
     
     if (!user) {
       return res.status(401).json({ error: 'Email və ya şifrə yanlışdır' });
@@ -276,7 +300,7 @@ app.post('/api/admin/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
-    const admin = dbHelpers.getAdminByUsername.get(username);
+    const admin = database.admins.find(a => a.username === username);
     
     if (!admin) {
       return res.status(401).json({ error: 'İstifadəçi adı və ya şifrə yanlışdır' });
@@ -313,7 +337,7 @@ app.get('/api/user/profile', (req, res) => {
     return res.status(401).json({ error: 'Giriş tələb olunur' });
   }
   
-  const user = dbAPI.getUserById(req.session.userId);
+  const user = database.users.find(u => u.id === req.session.userId);
   if (!user) {
     return res.status(404).json({ error: 'İstifadəçi tapılmadı' });
   }
@@ -327,7 +351,7 @@ app.post('/api/user/update-profile', async (req, res) => {
     return res.status(401).json({ error: 'Giriş tələb olunur' });
   }
   
-  const user = dbAPI.getUserById(req.session.userId);
+  const user = database.users.find(u => u.id === req.session.userId);
   if (!user) {
     return res.status(404).json({ error: 'İstifadəçi tapılmadı' });
   }
@@ -352,7 +376,7 @@ app.post('/api/user/upload-avatar', async (req, res) => {
     return res.status(400).json({ error: 'Şəkil yüklənmədi' });
   }
   
-  const user = dbAPI.getUserById(req.session.userId);
+  const user = database.users.find(u => u.id === req.session.userId);
   if (!user) {
     return res.status(404).json({ error: 'İstifadəçi tapılmadı' });
   }
@@ -373,11 +397,11 @@ app.get('/api/faculties', (req, res) => {
 });
 
 app.get('/api/rules', (req, res) => {
-  res.json({ rules: dbAPI.getRules() });
+  res.json({ rules: database.rules });
 });
 
 app.get('/api/daily-topic', (req, res) => {
-  res.json({ topic: dbAPI.getDailyTopic() });
+  res.json({ topic: database.dailyTopic });
 });
 
 // Admin API Routes
@@ -396,10 +420,9 @@ function requireSuperAdmin(req, res, next) {
 }
 
 app.get('/api/admin/users', requireAdmin, (req, res) => {
-  const users = dbAPI.getAllUsers();
-  const usersWithoutPasswords = users.map(u => {
+  const usersWithoutPasswords = database.users.map(u => {
     const { password: _, ...userData } = u;
-    return { ...userData, reportCount: dbAPI.getReportCount(u.id) };
+    return { ...userData, reportCount: database.reports[u.id] || 0 };
   });
   res.json({ users: usersWithoutPasswords, total: usersWithoutPasswords.length });
 });
@@ -407,45 +430,44 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
 app.post('/api/admin/user/toggle-status', requireAdmin, (req, res) => {
   const { userId, status } = req.body;
   
-  const user = dbAPI.getUserById(userId);
+  const user = database.users.find(u => u.id === userId);
   if (!user) {
     return res.status(404).json({ error: 'İstifadəçi tapılmadı' });
   }
   
-  dbAPI.updateUserStatus(status, userId);
+  user.status = status;
   res.json({ success: true });
 });
 
 app.post('/api/admin/rules/update', requireAdmin, (req, res) => {
   const { rules } = req.body;
-  dbAPI.setRules(rules);
+  database.rules = rules;
   res.json({ success: true });
 });
 
 app.post('/api/admin/daily-topic/update', requireAdmin, (req, res) => {
   const { topic } = req.body;
-  dbAPI.setDailyTopic(topic);
+  database.dailyTopic = topic;
   io.emit('daily-topic-updated', { topic });
   res.json({ success: true });
 });
 
 app.post('/api/admin/filter-words/update', requireAdmin, (req, res) => {
   const { words } = req.body;
-  dbAPI.setBannedWords(words.split(',').map(w => w.trim()).filter(w => w));
+  database.bannedWords = words.split(',').map(w => w.trim()).filter(w => w);
   res.json({ success: true });
 });
 
 app.get('/api/admin/filter-words', requireAdmin, (req, res) => {
-  res.json({ words: dbAPI.getBannedWords().join(', ') });
+  res.json({ words: database.bannedWords.join(', ') });
 });
 
 app.get('/api/admin/reported-users', requireAdmin, (req, res) => {
-  const users = dbAPI.getAllUsers();
-  const reported = users
-    .filter(u => dbAPI.getReportCount(u.id) >= 16)
+  const reported = database.users
+    .filter(u => database.reports[u.id] >= 16)
     .map(u => {
       const { password: _, ...userData } = u;
-      return { ...userData, reportCount: dbAPI.getReportCount(u.id) };
+      return { ...userData, reportCount: database.reports[u.id] };
     });
   res.json({ users: reported });
 });
@@ -453,21 +475,19 @@ app.get('/api/admin/reported-users', requireAdmin, (req, res) => {
 app.post('/api/admin/message-expiry/update', requireAdmin, (req, res) => {
   const { groupMinutes, groupUnit, privateMinutes, privateUnit } = req.body;
   
-  const expiry = {
-    groupMinutes: parseInt(groupMinutes) || 1440,
-    groupUnit: groupUnit || 'hours',
-    groupHours: groupUnit === 'minutes' ? Math.floor(groupMinutes / 60) : Math.floor(groupMinutes / 60),
-    privateMinutes: parseInt(privateMinutes) || 2880,
-    privateUnit: privateUnit || 'hours',
-    privateHours: privateUnit === 'minutes' ? Math.floor(privateMinutes / 60) : Math.floor(privateMinutes / 60)
-  };
+  database.messageExpiry.groupMinutes = parseInt(groupMinutes) || 1440;
+  database.messageExpiry.groupUnit = groupUnit || 'hours';
+  database.messageExpiry.groupHours = groupUnit === 'minutes' ? Math.floor(groupMinutes / 60) : Math.floor(groupMinutes / 60);
   
-  dbAPI.setMessageExpiry(expiry);
+  database.messageExpiry.privateMinutes = parseInt(privateMinutes) || 2880;
+  database.messageExpiry.privateUnit = privateUnit || 'hours';
+  database.messageExpiry.privateHours = privateUnit === 'minutes' ? Math.floor(privateMinutes / 60) : Math.floor(privateMinutes / 60);
+  
   res.json({ success: true });
 });
 
 app.get('/api/admin/message-expiry', requireAdmin, (req, res) => {
-  res.json(dbAPI.getMessageExpiry());
+  res.json(database.messageExpiry);
 });
 
 app.post('/api/admin/create-admin', requireAdmin, requireSuperAdmin, async (req, res) => {
@@ -477,13 +497,13 @@ app.post('/api/admin/create-admin', requireAdmin, requireSuperAdmin, async (req,
     return res.status(400).json({ error: 'İstifadəçi adı və şifrə tələb olunur' });
   }
   
-  const exists = dbAPI.getAdminByUsername(username);
+  const exists = database.admins.find(a => a.username === username);
   if (exists) {
     return res.status(400).json({ error: 'Bu istifadəçi adı artıq mövcuddur' });
   }
   
   const hashedPassword = await bcrypt.hash(password, 10);
-  dbAPI.createAdmin(username, hashedPassword, 'admin');
+  database.admins.push({ username, password: hashedPassword, role: 'admin' });
   
   res.json({ success: true });
 });
@@ -495,12 +515,12 @@ app.post('/api/admin/delete-admin', requireAdmin, requireSuperAdmin, (req, res) 
     return res.status(400).json({ error: 'Super admin silinə bilməz' });
   }
   
-  dbAPI.deleteAdmin(username);
+  database.admins = database.admins.filter(a => a.username !== username);
   res.json({ success: true });
 });
 
 app.get('/api/admin/admins', requireAdmin, requireSuperAdmin, (req, res) => {
-  const admins = dbAPI.getAllAdmins();
+  const admins = database.admins.map(a => ({ username: a.username, role: a.role }));
   res.json({ admins });
 });
 
@@ -509,7 +529,7 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
   socket.on('join-faculty', ({ userId, faculty }) => {
-    const user = dbAPI.getUserById(userId);
+    const user = database.users.find(u => u.id === userId);
     if (!user || user.status !== 'active') {
       socket.emit('error', { message: 'İstifadəçi tapılmadı və ya deaktivdir' });
       return;
@@ -519,23 +539,22 @@ io.on('connection', (socket) => {
     socket.faculty = faculty;
     socket.join(faculty);
     
-    // Fakültə mesajlarını göndər (in-memory)
-    if (!messagesCache.messages[faculty]) {
-      messagesCache.messages[faculty] = [];
+    // Fakültə mesajlarını göndər
+    if (!database.messages[faculty]) {
+      database.messages[faculty] = [];
     }
-    socket.emit('faculty-messages', { messages: messagesCache.messages[faculty] });
+    socket.emit('faculty-messages', { messages: database.messages[faculty] });
   });
   
   socket.on('send-faculty-message', ({ userId, faculty, message }) => {
-    const user = dbAPI.getUserById(userId);
+    const user = database.users.find(u => u.id === userId);
     if (!user || user.status !== 'active') return;
     
-    if (!messagesCache.messages[faculty]) {
-      messagesCache.messages[faculty] = [];
+    if (!database.messages[faculty]) {
+      database.messages[faculty] = [];
     }
     
-    const bannedWords = dbAPI.getBannedWords();
-    const filteredMessage = filterMessage(sanitizeMessage(message), bannedWords);
+    const filteredMessage = filterMessage(sanitizeMessage(message), database.bannedWords);
     
     const messageData = {
       id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -550,48 +569,48 @@ io.on('connection', (socket) => {
       time: getBakuTime()
     };
     
-    messagesCache.messages[faculty].push(messageData);
+    database.messages[faculty].push(messageData);
     
     // Fakültəyə mesajı göndər (real-time)
     io.to(faculty).emit('new-faculty-message', messageData);
   });
   
   socket.on('join-private-chat', ({ userId, otherUserId }) => {
-    const user = dbAPI.getUserById(userId);
-    const otherUser = dbAPI.getUserById(otherUserId);
+    const user = database.users.find(u => u.id === userId);
+    const otherUser = database.users.find(u => u.id === otherUserId);
     
     if (!user || !otherUser) return;
     
     const chatId = [userId, otherUserId].sort().join('_');
     socket.join(chatId);
     
-    if (!messagesCache.privateMessages[chatId]) {
-      messagesCache.privateMessages[chatId] = [];
+    if (!database.privateMessages[chatId]) {
+      database.privateMessages[chatId] = [];
     }
     
-    socket.emit('private-messages', { messages: messagesCache.privateMessages[chatId] });
+    socket.emit('private-messages', { messages: database.privateMessages[chatId] });
   });
   
   socket.on('send-private-message', ({ userId, otherUserId, message }) => {
-    const user = dbAPI.getUserById(userId);
-    const otherUser = dbAPI.getUserById(otherUserId);
+    const user = database.users.find(u => u.id === userId);
+    const otherUser = database.users.find(u => u.id === otherUserId);
     
     if (!user || !otherUser || user.status !== 'active') return;
     
     // Əngəllənmə yoxlaması
-    if (dbAPI.isBlocked(otherUserId, userId)) {
+    const otherBlockedList = database.blockedUsers[otherUserId] || [];
+    if (otherBlockedList.includes(userId)) {
       socket.emit('error', { message: 'Bu istifadəçi sizi əngəlləyib' });
       return;
     }
     
     const chatId = [userId, otherUserId].sort().join('_');
     
-    if (!messagesCache.privateMessages[chatId]) {
-      messagesCache.privateMessages[chatId] = [];
+    if (!database.privateMessages[chatId]) {
+      database.privateMessages[chatId] = [];
     }
     
-    const bannedWords = dbAPI.getBannedWords();
-    const filteredMessage = filterMessage(sanitizeMessage(message), bannedWords);
+    const filteredMessage = filterMessage(sanitizeMessage(message), database.bannedWords);
     
     const messageData = {
       id: 'pmsg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -604,17 +623,28 @@ io.on('connection', (socket) => {
       time: getBakuTime()
     };
     
-    messagesCache.privateMessages[chatId].push(messageData);
+    database.privateMessages[chatId].push(messageData);
     io.to(chatId).emit('new-private-message', messageData);
   });
   
   socket.on('block-user', ({ userId, targetUserId }) => {
-    dbAPI.blockUser(userId, targetUserId);
+    if (!database.blockedUsers[userId]) {
+      database.blockedUsers[userId] = [];
+    }
+    
+    if (!database.blockedUsers[userId].includes(targetUserId)) {
+      database.blockedUsers[userId].push(targetUserId);
+    }
+    
     socket.emit('user-blocked', { targetUserId });
   });
   
   socket.on('report-user', ({ userId, targetUserId }) => {
-    dbAPI.incrementReport(targetUserId);
+    if (!database.reports[targetUserId]) {
+      database.reports[targetUserId] = 0;
+    }
+    
+    database.reports[targetUserId]++;
     socket.emit('user-reported', { targetUserId });
   });
   

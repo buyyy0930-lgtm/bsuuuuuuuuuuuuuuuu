@@ -20,6 +20,11 @@ pids
 uploads/*
 !uploads/.gitkeep
 
+# Database files (keep .gitkeep)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
 # PM2
 .pm2/
 pids/

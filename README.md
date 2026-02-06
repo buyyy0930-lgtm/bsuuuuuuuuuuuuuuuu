@@ -1,6 +1,34 @@
 # BSU Chat - Bakı Dövlət Universiteti Tələbə Chat Platforması
 
-## 📋 Layihə haqqında
+## 🗄️ Database (Davamlı Məlumat Saxlama)
+
+**SQLite File-Based Database** istifadə edilir - server yenilənəndə məlumatlar silinmir.
+
+### Saxlanan Məlumatlar
+- **İstifadəçilər**: ad-soyad, email, telefon, fakültə, dərəcə, kurs, profil şəkli, status
+- **Adminlər**: istifadəçi adı, şifrə (hash), rol (super/admin)
+- **Əngəllənmələr**: hansı istifadəçi kimi əngəlləyib
+- **Şikayətlər**: hər istifadəçinin şikayət sayı
+- **Ayarlar**: qaydalar, günün mövzusu, filtr sözləri, mesaj silinmə müddəti
+
+### Mesajlar (In-Memory)
+- **Qrup mesajları** və **şəxsi mesajlar** in-memory saxlanır
+- Server restart edildikdə mesajlar silinir
+- Mesaj silinmə müddəti admin panelindən idarə olunur
+
+### Database Faylı
+- **Yer**: `/home/user/webapp/data/bsu_chat.db`
+- **.gitignore**: `data/*.db*` (database faylları git-ə commit olunmur)
+- **Backup**: layihəni backup edərkən database daxildir
+
+### Render.com Production
+- Render.com-da database saxlanılır (file-based)
+- Server restart edildikdə məlumatlar qalır
+- Session üçün production-da Redis/MongoDB tövsiyə olunur
+
+---
+
+## 📱 Layihə haqqında
 
 **BSU Chat** Bakı Dövlət Universiteti tələbələri üçün hazırlanmış real-time mesajlaşma platformasıdır. 16 fakültənin hər biri üçün ayrıca chat otaqları, şəxsi mesajlaşma, admin paneli və s. funksiyalar daxildir.
 
@@ -119,10 +147,48 @@ webapp/
 
 ## 📝 Qeydlər
 
-- Bu layihə in-memory database istifadə edir (development üçün)
-- Production-da real database (MongoDB, PostgreSQL və s.) istifadə edilməlidir
-- Render.com-da deploy üçün hazırdır
-- PM2 ilə process management
+- ✅ **SQLite file-based database** istifadə edilir (production-ready)
+- ✅ İstifadəçi məlumatları, adminlər, əngəllənmələr və s. davamlı saxlanır
+- ✅ Mesajlar in-memory (server restart edildikdə silinir)
+- ✅ Render.com-da deploy üçün hazırdır
+- ✅ PM2 ilə process management
+- 🔄 Session üçün production-da Redis/MongoDB tövsiyə olunur
+
+## 🛠️ Texniki Detallar
+
+### Backend
+- **Node.js + Express**: Server framework
+- **Socket.IO**: Real-time mesajlaşma
+- **better-sqlite3**: SQLite database (file-based, persistent)
+- **bcryptjs**: Şifrə hash-ləmə
+- **sanitize-html**: XSS protection
+- **compression**: Response sıxışdırma (gzip)
+
+### Frontend
+- **HTML/CSS/JavaScript**: Vanilla JS (framework yoxdur)
+- **Socket.IO Client**: Real-time bağlantı
+- **TailwindCSS CDN**: Styling
+- **Font Awesome**: İkonlar
+
+### Database Structure
+- **users**: İstifadəçi məlumatları (id, email, phone, fullname, faculty, degree, course, avatar, status, created_at)
+- **admins**: Admin hesabları (username, password hash, role)
+- **blocked_users**: Əngəllənmələr (user_id -> blocked_user_id)
+- **user_reports**: Şikayətlər (user_id -> report_count)
+- **settings**: Sistem ayarları (rules, dailyTopic, bannedWords, messageExpiry və s.)
+
+### Mesaj Silinmə
+- **Qrup mesajları**: Admin panelindən dəqiqə/saat seçilir (default: 1440 dəqiqə = 24 saat)
+- **Şəxsi mesajlar**: Ayrıca ayarlanır (default: 2880 dəqiqə = 48 saat)
+- **Cleanup**: Hər dəqiqə avtomatik yoxlanır və köhnə mesajlar silinir
+
+### Session
+- **Development**: express-session (in-memory) - server restart edildikdə sessionlar silinir
+- **Production**: MongoDB/Redis session store tövsiyə olunur
+
+### Port və Environment
+- **PORT**: `process.env.PORT || 3000`
+- **Database**: `data/bsu_chat.db` (SQLite file)
 
 ## 🌐 Deployment (Render.com)
 

@@ -1,0 +1,10 @@
+{
+  "phone": "+994501234567",
+  "email": "test@bsu.edu.az",
+  "password": "test123",
+  "fullname": "Test İstifadəçi",
+  "faculty": "Fizika fakültəsi",
+  "degree": "bakalavr",
+  "course": 2,
+  "answers": ["əsas", "əsas", "əsas"]
+}
