@@ -75,6 +75,10 @@
 
 **GitHub Repository**: https://github.com/buyyy0930-lgtm/bsuuuuuuuuuuuuuuuu
 
+**Project Backup (SQLite DB Daxil)**: https://www.genspark.ai/api/files/s/OgnxBVkA
+
+**Qeyd**: GitHub-a push üçün #github tab-dan authorization tələb olunur.
+
 ### Lokal Development
 
 ```bash
